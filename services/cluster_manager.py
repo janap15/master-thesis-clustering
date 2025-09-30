@@ -1,3 +1,4 @@
+import time
 import numpy as np
 
 from data_models.cluster import Cluster
@@ -12,21 +13,33 @@ class ClusterManager:
         self.num_of_clusters = num_of_clusters
         self.warehouse = warehouse
         self.tomtom_client = tomtom_client
-        self.distance_matrix = None
         self.clustering_model = clustering_model
+        self.distance_matrix = None
         self.clusters = []
 
 
     def build_distance_matrix(self):
-        job_id = self.tomtom_client.submit_matrix_routing_request(self.packages)
-        matrix_routing_response = self.tomtom_client.poll_matrix_routing_result(job_id)
-        self.distance_matrix = np.array(self.tomtom_client.response_to_result_matrix(matrix_routing_response))
+        num_packages = len(self.packages)
+        self.distance_matrix = np.zeros((num_packages, num_packages))
+
+        chunks = list(chunk_list(self.packages, 50))
+        print(len(chunks))
+        print([len(c) for c in chunks])
+
+        for i, origins in enumerate(chunks):
+            for j, destinations in enumerate(chunks):
+                submatrix = self.tomtom_client.get_distance_matrix(origins, destinations)
+                for oi, origin in enumerate(origins):
+                    for dj, destination in enumerate(destinations):
+                        oi_idx = self.packages.index(origin)
+                        dj_idx = self.packages.index(destination)
+                        self.distance_matrix[oi_idx, dj_idx] = submatrix[oi][dj]
+                time.sleep(10)
+        return self.distance_matrix
 
 
-    def build_clusters(self):
+    def build_clusters(self, distance_weight=0.5, priority_weight=0.5):
         priorities = [p.get_priority() for p in self.packages]
-
-        distance_weight, priority_weight = 0.8, 0.2
 
         normalized_distances = normalize_matrix(self.distance_matrix)
         normalized_priorities = get_priority_diversity_matrix(priorities)
@@ -41,3 +54,8 @@ class ClusterManager:
             self.packages[i].set_cluster(lbl)
 
         self.clusters = [Cluster(i, group, self.warehouse) for i, group in enumerate(grouped_packages)]
+
+
+def chunk_list(lst, size=40):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]
