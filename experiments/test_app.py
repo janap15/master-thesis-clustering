@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial import distance_matrix
 
 from sklearn.manifold import MDS
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
@@ -10,9 +11,10 @@ from models.kmeans_clustering import KMeansClusteringModel
 from services.tomtom_client import TomTomClient
 
 
-API_KEY = ""  # 🔹 replace with your real key
+API_KEY = ".."
 NUM_CLUSTERS = 3
-NUM_PACKAGES = 15
+NUM_PACKAGES = 10
+
 
 def evaluate_clusters(distance_matrix, labels):
     distance_matrix = np.array(distance_matrix)
@@ -46,7 +48,7 @@ def create_dummy_packages(seed=42):
     for i in range(NUM_PACKAGES):
         lat = np.random.uniform(min_lat, max_lat)
         lon = np.random.uniform(min_lon, max_lon)
-        priority = np.random.randint(0, 4)  # priority 0-3
+        priority = np.random.randint(1, 4)  # priority 1-3
         pkg = Package(
             package_id=f"pkg_{i}",
             latitude=lat,
@@ -60,12 +62,19 @@ def create_dummy_packages(seed=42):
 
 def run_test():
     packages = create_dummy_packages()
+    for package in packages:
+        print(package)
 
     # 🔹 Use TomTom to get real distance matrix
     client = TomTomClient(API_KEY)
-    job_id = client.submit_matrix_routing_request(packages)
-    response = client.poll_matrix_routing_result(job_id)
-    distance_matrix = client.response_to_result_matrix(response)
+    cluster_manager_base = ClusterManager(
+        packages=packages,
+        num_of_clusters=NUM_CLUSTERS,
+        warehouse="w1",
+        clustering_model=None,
+        tomtom_client=client,
+    )
+    distance_matrix = cluster_manager_base.build_distance_matrix()
 
     print("=== Distance Matrix from TomTom (meters) ===")
     print(distance_matrix)
